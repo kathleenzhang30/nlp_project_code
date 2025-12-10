@@ -1,5 +1,11 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 class RotaryPositionalEmbedding(nn.Module):
     """
@@ -10,8 +16,8 @@ class RotaryPositionalEmbedding(nn.Module):
         self.dim = dim
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
         t = torch.arange(max_seq_len).float()
-        freqs = torch.einsum("i , j -> i j", t, inv_freq)  # [seq_len, dim//2]
-        emb = torch.cat((freqs, freqs), dim=-1)            # [seq_len, dim]
+        freqs = torch.einsum("i , j -> i j", t, inv_freq)  
+        emb = torch.cat((freqs, freqs), dim=-1)            
         self.register_buffer("cos_emb", emb.cos(), persistent=False)
         self.register_buffer("sin_emb", emb.sin(), persistent=False)
 
@@ -29,13 +35,12 @@ def apply_rope(x, cos, sin):
     x: [B, T, D]
     cos, sin: [T, D]
     """
-    # slice cos/sin to match interleaved even/odd dimensions
-    cos_even = cos[..., ::2]  # [T, D/2]
+    cos_even = cos[..., ::2]  
     cos_odd  = cos[..., 1::2]
     sin_even = sin[..., ::2]
     sin_odd  = sin[..., 1::2]
 
-    x1, x2 = x[..., ::2], x[..., 1::2]  # [B, T, D/2]
+    x1, x2 = x[..., ::2], x[..., 1::2]  
 
     x1_rot = x1 * cos_even - x2 * sin_even
     x2_rot = x1 * sin_odd  + x2 * cos_odd
@@ -82,8 +87,6 @@ dataset = SP500Dataset(prices, seq_len=seq_len)
 train_size = int(0.8 * len(dataset))
 test_size = len(dataset) - train_size
 train_ds, test_ds = torch.utils.data.random_split(dataset, [train_size, test_size])
-
-from torch.utils.data import DataLoader
 
 train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_ds, batch_size=64, shuffle=False)
